@@ -1,7 +1,23 @@
+# Python / local environment
 .venv/
-*.retry
+__pycache__/
+*.pyc
+
+# Local machine config
+.env
+
+# Generated Ansible files
 inventory/hosts.ini
 host_vars/*.yml
 !host_vars/*.yml.example
-.vault-password
-mdp vault
+group_vars/generated.yml
+
+# Private keys
+*.pem
+
+# Ansible runtime
+*.retry
+
+# OS/editor noise
+.DS_Store
+.vscode/

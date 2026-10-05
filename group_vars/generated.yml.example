@@ -1,0 +1,16 @@
+---
+# This file is an example.
+# The real group_vars/generated.yml file is generated locally
+# by scripts/apply-env.sh from the .env file.
+#
+# Do not edit group_vars/generated.yml manually.
+# Edit .env instead, then run:
+#   ./scripts/apply-env.sh
+
+cloud1_project_dir: /opt/cloud1
+
+enable_duckdns: true
+
+enable_tls: true
+letsencrypt_email: your-email@example.com
+letsencrypt_staging: false

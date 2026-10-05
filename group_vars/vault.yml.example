@@ -1,6 +1,6 @@
 ---
 # Create group_vars/vault.yml with `ansible-vault create group_vars/vault.yml`.
-# Never commit the real file.
+# Never commit the real file (I did it because of reasons, but it's encrypted).
 vault_db_password: CHANGE_ME_LONG_RANDOM_WORDPRESS_DB_PASSWORD
 vault_db_root_password: CHANGE_ME_LONG_RANDOM_MYSQL_ROOT_PASSWORD
 vault_duckdns_token: CHANGE_ME_DUCKDNS_TOKEN
