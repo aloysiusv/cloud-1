@@ -1,7 +1,6 @@
 .venv/
 *.retry
 inventory/hosts.ini
-group_vars/vault.yml
 host_vars/*.yml
 !host_vars/*.yml.example
 .vault-password

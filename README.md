@@ -1,8 +1,6 @@
-# Cloud-1 AWS starter
+# Cloud-1 on AWS
 
 Ansible deploys a Docker Compose WordPress stack on an Ubuntu/Debian-like host.
-
-The role supports the subject's Ubuntu 20.04 assumption through Ubuntu's `docker.io` package plus a pinned Compose v2 plugin. On Ubuntu 22.04+ it uses Docker's current official APT repository.
 
 ## Containers
 
@@ -96,4 +94,4 @@ parallel deployment; it is not a shared-database horizontal WordPress cluster.
   Ansible password later does not automatically change the existing MySQL account.
 - Keep TCP/3306, TCP/9000 and phpMyAdmin's container port closed in the EC2 Security
   Group. Only Nginx publishes host ports.
-- Do not commit `group_vars/vault.yml`, inventory addresses or private keys.
+- Do not commit `group_vars/vault.yml`, inventory addresses or private keys, unless encrypted (check!)
