@@ -1,0 +1,6 @@
+---
+# Rename this file to wp1.yml and adapt it.
+public_ip: 203.0.113.10
+duckdns_subdomain: my-cloud1-wp1
+domain_name: "{{ duckdns_subdomain }}.duckdns.org"
+phpmyadmin_allowed_cidr: 198.51.100.24/32

@@ -1,0 +1,333 @@
+---
+- name: Validate mandatory variables
+  ansible.builtin.assert:
+    that:
+      - domain_name | length > 3
+      - public_ip | length > 6
+      - letsencrypt_email is search('@')
+      - phpmyadmin_allowed_cidr != '127.0.0.1/32'
+      - vault_db_password | length >= 20
+      - vault_db_root_password | length >= 20
+      - not enable_duckdns or vault_duckdns_token | length >= 20
+    fail_msg: >-
+      Complete group_vars/all.yml, host_vars/<host>.yml and encrypted
+      group_vars/vault.yml before deploying.
+
+- name: Validate supported target family
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'Debian'
+    fail_msg: This role expects an Ubuntu/Debian-like target.
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - openssl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Docker from Docker's supported repository on Ubuntu 22.04+
+  when: ansible_distribution_version is version('22.04', '>=')
+  block:
+    - name: Create APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Install Docker repository signing key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: true
+
+    - name: Configure Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+        update_cache: true
+
+    - name: Install Docker Engine and Compose v2 plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+- name: Install Ubuntu-packaged Docker on Ubuntu 20.04 compatibility targets
+  when: ansible_distribution_version is version('22.04', '<')
+  block:
+    - name: Install Docker Engine from Ubuntu repositories
+      ansible.builtin.apt:
+        name:
+          - docker.io
+        state: present
+        update_cache: true
+
+    - name: Resolve Compose binary architecture
+      ansible.builtin.set_fact:
+        compose_binary_arch: "{{ {'x86_64': 'x86_64', 'aarch64': 'aarch64'}.get(ansible_architecture, ansible_architecture) }}"
+
+    - name: Create Docker CLI plugin directory
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: '0755'
+
+    - name: Install a Compose v2 plugin compatible with the Cloud-1 requirement
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/docker/compose/releases/download/{{ legacy_compose_version }}/
+          docker-compose-linux-{{ compose_binary_arch }}
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        mode: '0755'
+        force: false
+
+- name: Enable and start Docker daemon
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Verify Docker Compose v2 is available
+  ansible.builtin.command:
+    cmd: docker compose version
+  register: docker_compose_version
+  changed_when: false
+
+- name: Add SSH user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Create project directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ cloud1_project_dir }}", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/nginx", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/wordpress", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/mysql", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/phpmyadmin", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/nginx", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/secrets", mode: '0700' }
+    - { path: "{{ cloud1_project_dir }}/data/certbot-www", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/data/letsencrypt", mode: '0700' }
+
+- name: Write Docker secret files
+  ansible.builtin.copy:
+    content: "{{ item.value }}\n"
+    dest: "{{ cloud1_project_dir }}/secrets/{{ item.name }}"
+    owner: root
+    group: root
+    mode: '0444'
+  loop:
+    - { name: db_password, value: "{{ vault_db_password }}" }
+    - { name: db_root_password, value: "{{ vault_db_root_password }}" }
+  no_log: true
+
+- name: Deploy static container configuration files
+  ansible.builtin.copy:
+    src: "docker/{{ item.src }}"
+    dest: "{{ cloud1_project_dir }}/docker/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - { src: wordpress/uploads.ini, dest: wordpress/uploads.ini }
+    - { src: mysql/my.cnf, dest: mysql/my.cnf }
+
+- name: Deploy templated Dockerfiles
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ cloud1_project_dir }}/docker/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - { src: nginx-Dockerfile.j2, dest: nginx/Dockerfile }
+    - { src: wordpress-Dockerfile.j2, dest: wordpress/Dockerfile }
+    - { src: mysql-Dockerfile.j2, dest: mysql/Dockerfile }
+    - { src: phpmyadmin-Dockerfile.j2, dest: phpmyadmin/Dockerfile }
+
+- name: Deploy Docker Compose definition
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ cloud1_project_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Update DuckDNS A record
+  ansible.builtin.uri:
+    url: "https://www.duckdns.org/update?domains={{ duckdns_subdomain | urlencode }}&token={{ vault_duckdns_token | urlencode }}&ip={{ public_ip | urlencode }}"
+    method: GET
+    return_content: true
+    status_code: 200
+    validate_certs: true
+  register: duckdns_update
+  no_log: true
+  when: enable_duckdns | bool
+
+- name: Verify DuckDNS update response
+  ansible.builtin.assert:
+    that:
+      - duckdns_update.content | trim == 'OK'
+    fail_msg: DuckDNS rejected the update. Check the subdomain and token.
+  when: enable_duckdns | bool
+  no_log: true
+
+- name: Check whether a TLS certificate already exists
+  ansible.builtin.stat:
+    path: "{{ cloud1_project_dir }}/data/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+  register: tls_certificate
+
+- name: Deploy initial Nginx configuration
+  ansible.builtin.template:
+    src: "{{ 'nginx-https.conf.j2' if (enable_tls and tls_certificate.stat.exists) else 'nginx-http.conf.j2' }}"
+    dest: "{{ cloud1_project_dir }}/nginx/default.conf"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Validate rendered Compose model
+  ansible.builtin.command:
+    cmd: docker compose config --quiet
+    chdir: "{{ cloud1_project_dir }}"
+  changed_when: false
+
+- name: Build and start the stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ cloud1_project_dir }}"
+    state: present
+    build: always
+    pull: missing
+    remove_orphans: true
+  register: compose_result
+
+- name: Wait for public HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/healthz"
+    status_code: 200
+    return_content: true
+  register: health_http
+  retries: 20
+  delay: 3
+  until: health_http.status == 200
+
+- name: Wait until the domain resolves to this server
+  ansible.builtin.command:
+    cmd: "getent ahostsv4 {{ domain_name }}"
+  register: dns_lookup
+  changed_when: false
+  retries: 20
+  delay: 6
+  until: public_ip in dns_lookup.stdout
+  when:
+    - enable_tls | bool
+    - not tls_certificate.stat.exists
+
+- name: Obtain first Let's Encrypt certificate
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --profile
+      - tools
+      - run
+      - --rm
+      - certbot
+      - certonly
+      - --webroot
+      - --webroot-path=/var/www/certbot
+      - --email
+      - "{{ letsencrypt_email }}"
+      - --agree-tos
+      - --no-eff-email
+      - --non-interactive
+      - -d
+      - "{{ domain_name }}"
+      - "{{ '--staging' if letsencrypt_staging else '--keep-until-expiring' }}"
+    chdir: "{{ cloud1_project_dir }}"
+  when:
+    - enable_tls | bool
+    - not tls_certificate.stat.exists
+  register: certbot_first_run
+  changed_when: certbot_first_run.rc == 0
+
+- name: Deploy HTTPS Nginx configuration
+  ansible.builtin.template:
+    src: nginx-https.conf.j2
+    dest: "{{ cloud1_project_dir }}/nginx/default.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  when: enable_tls | bool
+
+- name: Test Nginx configuration
+  ansible.builtin.command:
+    cmd: docker compose exec -T nginx nginx -t
+    chdir: "{{ cloud1_project_dir }}"
+  changed_when: false
+  when: enable_tls | bool
+
+- name: Reload Nginx after enabling TLS
+  ansible.builtin.command:
+    cmd: docker compose exec -T nginx nginx -s reload
+    chdir: "{{ cloud1_project_dir }}"
+  changed_when: true
+  when: enable_tls | bool
+
+- name: Install certificate renewal script
+  ansible.builtin.template:
+    src: renew-cert.sh.j2
+    dest: /usr/local/sbin/cloud1-renew-cert
+    owner: root
+    group: root
+    mode: '0750'
+  when: enable_tls | bool
+
+- name: Schedule daily certificate renewal check
+  ansible.builtin.cron:
+    name: Cloud-1 Let's Encrypt renewal
+    user: root
+    minute: '17'
+    hour: '3'
+    job: /usr/local/sbin/cloud1-renew-cert >> /var/log/cloud1-certbot.log 2>&1
+  when: enable_tls | bool
+
+- name: Verify HTTPS endpoint
+  ansible.builtin.uri:
+    url: "https://{{ domain_name }}/healthz"
+    status_code: 200
+    validate_certs: "{{ not letsencrypt_staging }}"
+  register: health_https
+  retries: 10
+  delay: 3
+  until: health_https.status == 200
+  when: enable_tls | bool
+
+- name: Display deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "WordPress: {{ 'https' if enable_tls else 'http' }}://{{ domain_name }}/"
+      - "phpMyAdmin: {{ 'https' if enable_tls else 'http' }}://{{ domain_name }}/phpmyadmin/"
+      - "phpMyAdmin is restricted to {{ phpmyadmin_allowed_cidr }}"
+      - "Project directory: {{ cloud1_project_dir }}"

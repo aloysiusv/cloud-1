@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+set -eu
+cd {{ cloud1_project_dir }}
+docker compose --profile tools run --rm certbot renew \
+  --webroot --webroot-path=/var/www/certbot --quiet
+docker compose exec -T nginx nginx -t
+docker compose exec -T nginx nginx -s reload

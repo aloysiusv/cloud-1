@@ -1,0 +1,3 @@
+FROM {{ mysql_base_image }}
+COPY my.cnf /etc/mysql/conf.d/cloud1.cnf
+EXPOSE 3306

@@ -1,0 +1,11 @@
+---
+- name: Deploy the Cloud-1 WordPress stack
+  hosts: wordpress_servers
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - group_vars/vault.yml
+
+  roles:
+    - role: cloud1

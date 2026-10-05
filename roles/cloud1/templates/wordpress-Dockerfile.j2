@@ -1,0 +1,4 @@
+FROM {{ wordpress_base_image }}
+COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+EXPOSE 9000
+CMD ["php-fpm"]
