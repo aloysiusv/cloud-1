@@ -1,3 +1,4 @@
+# Declares external Ansible dependencies, here it means it can use Docker modules from that collection
 ---
 collections:
   - name: community.docker
