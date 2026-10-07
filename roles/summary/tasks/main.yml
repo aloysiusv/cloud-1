@@ -1,0 +1,8 @@
+---
+- name: Display deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "WordPress: {{ 'https' if enable_tls else 'http' }}://{{ domain_name }}/"
+      - "phpMyAdmin: {{ 'https' if enable_tls else 'http' }}://{{ domain_name }}/phpmyadmin/"
+      - "phpMyAdmin is restricted to {{ phpmyadmin_allowed_cidr }}"
+      - "Project directory: {{ cloud1_project_dir }}"

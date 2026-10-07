@@ -5,7 +5,21 @@
   gather_facts: true
 
   vars_files:
+    - group_vars/generated.yml
     - group_vars/vault.yml
 
   roles:
-    - role: cloud1
+    - role: common
+    - role: docker
+    - role: cloud1_layout
+    - role: secrets
+    - role: mysql
+    - role: wordpress
+    - role: phpmyadmin
+    - role: duckdns
+      when: enable_duckdns | bool
+    - role: nginx
+    - role: compose
+    - role: certbot
+      when: enable_tls | bool
+    - role: summary

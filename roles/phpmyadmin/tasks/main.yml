@@ -1,0 +1,8 @@
+---
+- name: Deploy phpMyAdmin Dockerfile
+  ansible.builtin.template:
+    src: phpmyadmin-Dockerfile.j2
+    dest: "{{ cloud1_project_dir }}/docker/phpmyadmin/Dockerfile"
+    owner: root
+    group: root
+    mode: '0644'

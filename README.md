@@ -12,6 +12,8 @@ This project deploys a WordPress website on an Ubuntu EC2 instance using:
 - DuckDNS
 - Ansible Vault for secrets
 
+The Ansible code is split into focused roles instead of one large monolithic role.
+
 ---
 
 ## Runtime architecture
@@ -25,79 +27,48 @@ flowchart TB
     subgraph EC2["AWS EC2 instance — Ubuntu"]
         SSH["SSH daemon"]
 
-        subgraph ANSIBLE_TARGET["/opt/cloud1"]
+        subgraph TARGET["/opt/cloud1"]
             COMPOSE["docker-compose.yml"]
-            NGINXCONF["nginx config"]
-            CERTS["TLS certificates<br/>fullchain.pem / privkey.pem"]
-            ACME["ACME challenge files<br/>.well-known/acme-challenge"]
+            NGINXCONF["nginx/default.conf"]
+            CERTS["TLS certificates"]
+            ACME["ACME challenge files"]
         end
 
         subgraph STACK["Docker Compose stack"]
-            NGINX["nginx<br/>reverse proxy<br/>ports 80 / 443"]
-            WP["wordpress<br/>PHP-FPM runtime"]
-            PMA["phpMyAdmin<br/>database UI"]
-            MYSQL["mysql<br/>database server"]
-            CERTBOT["certbot<br/>certificate renewal"]
+            NGINX["nginx<br/>ports 80 / 443"]
+            WP["wordpress<br/>PHP-FPM"]
+            PMA["phpMyAdmin"]
+            MYSQL["mysql"]
+            CERTBOT["certbot"]
         end
 
-        subgraph STORAGE["Persistent storage"]
-            WPDATA[("wordpress_data<br/>WordPress files<br/>themes / plugins / uploads")]
-            MYSQLDATA[("mysql_data<br/>database files")]
+        subgraph STORAGE["Persistent Docker volumes"]
+            WPDATA[("wordpress_data")]
+            MYSQLDATA[("mysql_data")]
         end
     end
 
     subgraph LOCAL["Local machine"]
-        DEV["Developer<br/>Makefile + Ansible"]
-        VAULT["Ansible Vault<br/>secrets + SSH key"]
-        ENV[".env<br/>local machine config"]
+        DEV["Makefile + Ansible"]
+        ENV[".env"]
+        VAULT["Ansible Vault"]
     end
 
-    %% Deployment
-    DEV -->|"make deploy / ansible-playbook over SSH"| SSH
-    DEV --> VAULT
-    DEV --> ENV
-    SSH --> COMPOSE
-
-    %% Public traffic
-    USER -->|"HTTPS request"| DNS
-    DNS -->|"resolves to EC2 public IP"| NGINX
-
-    %% Web routing
-    NGINX -->|"FastCGI :9000"| WP
-    NGINX -->|"HTTP proxy<br/>/phpmyadmin/"| PMA
-
-    %% Database traffic
-    WP -->|"MySQL :3306<br/>internal Docker network"| MYSQL
-    PMA -->|"MySQL :3306<br/>internal Docker network"| MYSQL
-
-    %% TLS / Certbot
-    CERTBOT -->|"requests / renews certs"| LE
-    LE -->|"HTTP-01 challenge<br/>port 80"| NGINX
-    NGINX -->|"serves challenge files"| ACME
-    CERTBOT -->|"writes challenge files"| ACME
-    CERTBOT -->|"writes certificates"| CERTS
-    NGINX -->|"reads certificates for HTTPS"| CERTS
-
-    %% Storage mounts
-    WP <-->|"mounted volume"| WPDATA
-    NGINX -->|"reads static files<br/>if mounted read-only"| WPDATA
-    MYSQL <-->|"mounted volume"| MYSQLDATA
+    DEV -->|"SSH / Ansible"| SSH
+    SSH --> TARGET
+    USER --> DNS
+    DNS --> NGINX
+    NGINX --> WP
+    NGINX --> PMA
+    WP --> MYSQL
+    PMA --> MYSQL
+    CERTBOT --> LE
+    CERTBOT --> CERTS
+    WP <--> WPDATA
+    MYSQL <--> MYSQLDATA
 ```
 
-### Component communication
-
-- The local machine runs Ansible through the Makefile.
-- Ansible connects to the EC2 instance over SSH and deploys files into `/opt/cloud1`.
-- Docker Compose starts the application containers.
-- DuckDNS points the public domain to the EC2 public IP.
-- Nginx is the only public web entrypoint on ports 80 and 443.
-- Nginx forwards WordPress PHP requests to the WordPress PHP-FPM container.
-- Nginx forwards `/phpmyadmin/` requests to the phpMyAdmin container.
-- WordPress and phpMyAdmin both connect to MySQL over the internal Docker network.
-- MySQL is not publicly exposed.
-- Certbot obtains and renews HTTPS certificates through Let's Encrypt.
-- Certbot writes certificate files, and Nginx reads them to serve HTTPS.
-- WordPress files and MySQL database files are stored in persistent Docker volumes.
+---
 
 ## Repository structure
 
@@ -119,34 +90,62 @@ cloud-1/
 ├── group_vars/
 │   ├── all.yml
 │   ├── generated.yml.example
-│   └── vault.yml
+│   └── vault.yml.example
 │
 ├── secrets/
-│   └── cloud1-aws.pem.vault
+│   └── .gitkeep
 │
 ├── scripts/
-│   └── apply-env.sh
+│   ├── apply-env.sh
+│   └── allow-ssh-current-ip.sh
 │
 └── roles/
-    └── cloud1/
-        ├── tasks/
-        ├── templates/
-        └── files/
+    ├── common/
+    ├── docker/
+    ├── cloud1_layout/
+    ├── secrets/
+    ├── mysql/
+    ├── wordpress/
+    ├── phpmyadmin/
+    ├── duckdns/
+    ├── nginx/
+    ├── compose/
+    ├── certbot/
+    └── summary/
 ```
+
+---
+
+## Role responsibilities
+
+| Role | Responsibility |
+|---|---|
+| `common` | Validate required variables and install baseline packages. |
+| `docker` | Install Docker Engine and Docker Compose v2. |
+| `cloud1_layout` | Create `/opt/cloud1` directory layout. |
+| `secrets` | Write Docker secret files from Ansible Vault values. |
+| `mysql` | Deploy MySQL Dockerfile and configuration. |
+| `wordpress` | Deploy WordPress Dockerfile and PHP upload configuration. |
+| `phpmyadmin` | Deploy phpMyAdmin Dockerfile. |
+| `duckdns` | Update DuckDNS A record. |
+| `nginx` | Deploy Nginx Dockerfile and initial HTTP/HTTPS config. |
+| `compose` | Render Docker Compose and start/recreate the stack. |
+| `certbot` | Obtain/renew Let's Encrypt certificates and reload Nginx. |
+| `summary` | Display final deployment URLs. |
 
 ---
 
 ## Secrets
 
-Secrets are managed with Ansible Vault.
+Create the real vault file:
 
-The encrypted file:
-
-```text
-group_vars/vault.yml
+```bash
+cp group_vars/vault.yml.example group_vars/vault.yml
+nano group_vars/vault.yml
+ansible-vault encrypt group_vars/vault.yml
 ```
 
-contains:
+It must contain:
 
 ```yaml
 vault_db_password: "..."
@@ -154,107 +153,66 @@ vault_db_root_password: "..."
 vault_duckdns_token: "..."
 ```
 
-The encrypted file:
+The encrypted file must start with:
+
+```text
+$ANSIBLE_VAULT;1.1;AES256
+```
+
+For the SSH key, either keep your private key locally at:
+
+```text
+~/.ssh/cloud1-aws.pem
+```
+
+or store an encrypted copy as:
 
 ```text
 secrets/cloud1-aws.pem.vault
 ```
 
-contains the AWS SSH private key.
+Then restore it with:
 
-Both encrypted files must start with:
-
-```text
-$ANSIBLE_VAULT;1.1;AES256
+```bash
+make restore-key
 ```
 
 Never commit secrets in clear text.
 
 ---
 
-## Local files not committed
-
-These files are local or generated:
-
-```text
-.env
-.venv/
-inventory/hosts.ini
-host_vars/wp1.yml
-group_vars/generated.yml
-*.pem
-*.retry
-```
-
-They are ignored by Git.
-
----
-
 ## First setup on a new machine
-
-Clone the project:
 
 ```bash
 git clone <REPOSITORY_URL>
 cd cloud-1
-```
 
-Install the local Python / Ansible environment:
-
-```bash
 make setup
-```
+source .venv/bin/activate
 
-Create the local `.env` file:
-
-```bash
 cp .env.example .env
 nano .env
 ```
 
-Example:
-
-```env
-AWS_HOST_ALIAS=wp1
-AWS_ELASTIC_IP=YOUR_ELASTIC_IP
-ANSIBLE_USER=ubuntu
-SSH_KEY_PATH=~/.ssh/cloud1-aws.pem
-
-CLOUD1_PROJECT_DIR=/opt/cloud1
-
-DUCKDNS_SUBDOMAIN=your-duckdns-subdomain
-ENABLE_DUCKDNS=true
-
-ENABLE_TLS=true
-LETSENCRYPT_EMAIL=your-email@example.com
-LETSENCRYPT_STAGING=false
-
-PHPMYADMIN_ALLOWED_CIDR=YOUR_PUBLIC_IP/32
-```
-
-Restore the SSH key from Ansible Vault:
+If you use `make allow-ssh`, verify AWS CLI access:
 
 ```bash
-make restore-key
+aws sts get-caller-identity
 ```
 
-Generate local Ansible files:
+Then:
 
 ```bash
+make restore-key      # only if secrets/cloud1-aws.pem.vault exists
 make apply-env
-```
-
-Check that Ansible can reach the server:
-
-```bash
-make check
-```
-
-Deploy or redeploy:
-
-```bash
+make allow-ssh        # optional; opens SSH only for your current public IP
+make inventory
+make ping
+make syntax
 make deploy
 ```
+
+If you already have the private key locally at `~/.ssh/cloud1-aws.pem`, you can skip `make restore-key`.
 
 ---
 
@@ -262,8 +220,10 @@ make deploy
 
 ```bash
 cd cloud-1
+source .venv/bin/activate
 make apply-env
-make check
+make ping
+make syntax
 make deploy
 ```
 
@@ -276,68 +236,52 @@ make help          # show available commands
 make setup         # create venv and install Ansible dependencies
 make restore-key   # decrypt SSH key into ~/.ssh/cloud1-aws.pem
 make apply-env     # generate inventory and local vars from .env
+make allow-ssh     # add current IP/32 to EC2 Security Group for SSH
 make inventory     # show Ansible inventory
 make ping          # test Ansible SSH connection
 make syntax        # run Ansible syntax check
-make check         # apply-env + inventory + ping + syntax
 make deploy        # run the Ansible deployment
 make ssh           # connect to the EC2 instance
 make clean-local   # remove generated local files
 ```
 
-The Makefile is only a shortcut layer. The actual deployment logic remains in Ansible.
+---
+
+## Multi-server note
+
+Ansible can deploy this stack to several hosts by adding several entries under:
+
+```ini
+[wordpress_servers]
+wp1 ansible_host=203.0.113.10
+wp2 ansible_host=203.0.113.11
+```
+
+However, this does not create one shared WordPress site. It creates one independent stack per server, each with its own local MySQL and local Docker volumes.
+
+A real shared multi-server WordPress deployment would require:
+
+```text
+load balancer
++ several web nodes
++ shared database
++ shared media/uploads storage
+```
+
+This refactor improves maintainability without changing the current single-server architecture.
 
 ---
 
-## Manual commands on the server
-
-SSH into the instance:
+## Manual checks on the server
 
 ```bash
 make ssh
-```
-
-Go to the deployment directory:
-
-```bash
 cd /opt/cloud1
-```
-
-Check containers:
-
-```bash
 sudo docker compose ps
-```
-
-Restart all containers:
-
-```bash
-sudo docker compose restart
-```
-
-Restart one container:
-
-```bash
-sudo docker compose restart nginx
-sudo docker compose restart wordpress
-sudo docker compose restart mysql
-sudo docker compose restart phpmyadmin
-```
-
-View logs:
-
-```bash
 sudo docker compose logs --tail=100 nginx
 sudo docker compose logs --tail=100 wordpress
 sudo docker compose logs --tail=100 mysql
-```
-
-View volumes:
-
-```bash
 sudo docker volume ls
-sudo docker volume inspect cloud1_mysql_data
-sudo docker volume inspect cloud1_wordpress_data
 ```
 
 ---
@@ -369,63 +313,6 @@ After changing it:
 make apply-env
 make deploy
 ```
-
----
-
-## Security model
-
-Public ports:
-
-```text
-80
-443
-```
-
-The database is not publicly exposed.
-
-MySQL is reachable only inside the Docker network by:
-
-```text
-wordpress
-phpmyadmin
-```
-
-Secrets are encrypted with Ansible Vault and are not stored in clear text.
-
----
-
-## Idempotency
-
-The deployment can be run multiple times:
-
-```bash
-make deploy
-make deploy
-```
-
-Expected result:
-
-```text
-failed=0
-site still works
-data persists
-```
-
----
-
-## Redeploying the same site
-
-To redeploy the same existing site, keep the same:
-
-```text
-AWS_ELASTIC_IP
-DUCKDNS_SUBDOMAIN
-group_vars/vault.yml
-Ansible Vault password
-SSH private key
-```
-
-The WordPress data remains the same as long as the same EC2 instance and Docker volumes are used.
 
 ---
 

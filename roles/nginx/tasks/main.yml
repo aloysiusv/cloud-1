@@ -1,0 +1,21 @@
+---
+- name: Deploy Nginx Dockerfile
+  ansible.builtin.template:
+    src: nginx-Dockerfile.j2
+    dest: "{{ cloud1_project_dir }}/docker/nginx/Dockerfile"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Check whether a TLS certificate already exists
+  ansible.builtin.stat:
+    path: "{{ cloud1_project_dir }}/data/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+  register: tls_certificate
+
+- name: Deploy initial Nginx configuration
+  ansible.builtin.template:
+    src: "{{ 'nginx-https.conf.j2' if (enable_tls | bool and tls_certificate.stat.exists) else 'nginx-http.conf.j2' }}"
+    dest: "{{ cloud1_project_dir }}/nginx/default.conf"
+    owner: root
+    group: root
+    mode: '0644'

@@ -1,0 +1,33 @@
+---
+- name: Deploy Docker Compose definition
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ cloud1_project_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Validate rendered Compose model
+  ansible.builtin.command:
+    cmd: docker compose config --quiet
+    chdir: "{{ cloud1_project_dir }}"
+  changed_when: false
+
+- name: Build and start the stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ cloud1_project_dir }}"
+    state: present
+    build: always
+    pull: missing
+    remove_orphans: true
+  register: compose_result
+
+- name: Wait for public HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/healthz"
+    status_code: 200
+    return_content: true
+  register: health_http
+  retries: 20
+  delay: 3
+  until: health_http.status == 200

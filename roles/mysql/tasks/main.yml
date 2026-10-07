@@ -1,0 +1,16 @@
+---
+- name: Deploy MySQL configuration
+  ansible.builtin.copy:
+    src: my.cnf
+    dest: "{{ cloud1_project_dir }}/docker/mysql/my.cnf"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy MySQL Dockerfile
+  ansible.builtin.template:
+    src: mysql-Dockerfile.j2
+    dest: "{{ cloud1_project_dir }}/docker/mysql/Dockerfile"
+    owner: root
+    group: root
+    mode: '0644'

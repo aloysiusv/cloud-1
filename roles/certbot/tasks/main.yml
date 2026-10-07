@@ -1,0 +1,84 @@
+---
+- name: Wait until the domain resolves to this server
+  ansible.builtin.command:
+    cmd: "getent ahostsv4 {{ domain_name }}"
+  register: dns_lookup
+  changed_when: false
+  retries: 20
+  delay: 6
+  until: public_ip in dns_lookup.stdout
+  when:
+    - not tls_certificate.stat.exists
+
+- name: Obtain first Let's Encrypt certificate
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --profile
+      - tools
+      - run
+      - --rm
+      - certbot
+      - certonly
+      - --webroot
+      - --webroot-path=/var/www/certbot
+      - --email
+      - "{{ letsencrypt_email }}"
+      - --agree-tos
+      - --no-eff-email
+      - --non-interactive
+      - -d
+      - "{{ domain_name }}"
+      - "{{ '--staging' if letsencrypt_staging else '--keep-until-expiring' }}"
+    chdir: "{{ cloud1_project_dir }}"
+  when:
+    - not tls_certificate.stat.exists
+  register: certbot_first_run
+  changed_when: certbot_first_run.rc == 0
+
+- name: Deploy HTTPS Nginx configuration
+  ansible.builtin.template:
+    src: nginx-https.conf.j2
+    dest: "{{ cloud1_project_dir }}/nginx/default.conf"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Test Nginx configuration
+  ansible.builtin.command:
+    cmd: docker compose exec -T nginx nginx -t
+    chdir: "{{ cloud1_project_dir }}"
+  changed_when: false
+
+- name: Reload Nginx after enabling TLS
+  ansible.builtin.command:
+    cmd: docker compose exec -T nginx nginx -s reload
+    chdir: "{{ cloud1_project_dir }}"
+  changed_when: true
+
+- name: Install certificate renewal script
+  ansible.builtin.template:
+    src: renew-cert.sh.j2
+    dest: /usr/local/sbin/cloud1-renew-cert
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Schedule daily certificate renewal check
+  ansible.builtin.cron:
+    name: Cloud-1 Let's Encrypt renewal
+    user: root
+    minute: '17'
+    hour: '3'
+    job: /usr/local/sbin/cloud1-renew-cert >> /var/log/cloud1-certbot.log 2>&1
+
+- name: Verify HTTPS endpoint
+  ansible.builtin.uri:
+    url: "https://{{ domain_name }}/healthz"
+    status_code: 200
+    validate_certs: "{{ not letsencrypt_staging }}"
+  register: health_https
+  retries: 10
+  delay: 3
+  until: health_https.status == 200

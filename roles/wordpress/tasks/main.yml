@@ -1,0 +1,16 @@
+---
+- name: Deploy WordPress PHP upload configuration
+  ansible.builtin.copy:
+    src: uploads.ini
+    dest: "{{ cloud1_project_dir }}/docker/wordpress/uploads.ini"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy WordPress Dockerfile
+  ansible.builtin.template:
+    src: wordpress-Dockerfile.j2
+    dest: "{{ cloud1_project_dir }}/docker/wordpress/Dockerfile"
+    owner: root
+    group: root
+    mode: '0644'

@@ -1,26 +1,11 @@
 ---
-# Remote installation directory.
-cloud1_project_dir: /opt/cloud1
+# Static application defaults.
+# Local/deployment-specific values are generated from .env into group_vars/generated.yml
+# and host_vars/<host>.yml.
 
 # WordPress/MySQL logical names. Passwords live in encrypted vault.yml.
 db_name: wordpress
 db_user: wordpress
-
-# TLS and DNS. Override domain_name and public_ip per host in host_vars/<host>.yml
-# when deploying several servers.
-enable_tls: true
-letsencrypt_email: lrandria@42student.fr
-letsencrypt_staging: false
-
-# Restrict phpMyAdmin at the Nginx layer. Replace with your current public IP /32.
-# Example: 198.51.100.24/32
-phpmyadmin_allowed_cidr: 82.225.34.226/32
-
-# Optional DuckDNS automation.
-enable_duckdns: true
-duckdns_subdomain: lrandria-cloud1-wp1
-domain_name: "{{ duckdns_subdomain }}.duckdns.org"
-public_ip: 16.192.70.128
 
 # Docker image bases. Pinning major/minor families makes builds reproducible while
 # still receiving patch releases in the selected family.
@@ -30,5 +15,3 @@ mysql_base_image: mysql:8.4
 phpmyadmin_base_image: phpmyadmin:5-apache
 certbot_image: certbot/certbot:v5.6.0
 
-# Docker Compose fallback for Ubuntu 20.04, which is no longer supported by current Docker CE repositories.
-legacy_compose_version: v2.24.7

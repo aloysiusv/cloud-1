@@ -1,0 +1,41 @@
+---
+- name: Validate supported target family
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'Debian'
+    fail_msg: This deployment expects an Ubuntu/Debian-like target.
+
+- name: Validate mandatory variables
+  ansible.builtin.assert:
+    that:
+      - domain_name | length > 3
+      - public_ip | length > 6
+      - cloud1_project_dir | length > 4
+      - phpmyadmin_allowed_cidr != '127.0.0.1/32'
+      - vault_db_password | length >= 20
+      - vault_db_root_password | length >= 20
+      - (not enable_tls | bool) or (letsencrypt_email is search('@'))
+      - (not enable_duckdns | bool) or ((vault_duckdns_token | default('')) | length >= 20)
+    fail_msg: >-
+      Complete .env, run scripts/apply-env.sh, and provide encrypted
+      group_vars/vault.yml before deploying.
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - openssl
+      - cron
+      - git
+      - unzip
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure cron service is enabled and running
+  ansible.builtin.service:
+    name: cron
+    enabled: true
+    state: started

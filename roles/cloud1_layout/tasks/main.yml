@@ -1,0 +1,18 @@
+---
+- name: Create project directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ cloud1_project_dir }}", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/nginx", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/wordpress", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/mysql", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/docker/phpmyadmin", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/nginx", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/secrets", mode: '0700' }
+    - { path: "{{ cloud1_project_dir }}/data/certbot-www", mode: '0755' }
+    - { path: "{{ cloud1_project_dir }}/data/letsencrypt", mode: '0700' }

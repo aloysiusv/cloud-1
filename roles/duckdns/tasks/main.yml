@@ -1,0 +1,17 @@
+---
+- name: Update DuckDNS A record
+  ansible.builtin.uri:
+    url: "https://www.duckdns.org/update?domains={{ duckdns_subdomain | urlencode }}&token={{ vault_duckdns_token | urlencode }}&ip={{ public_ip | urlencode }}"
+    method: GET
+    return_content: true
+    status_code: 200
+    validate_certs: true
+  register: duckdns_update
+  no_log: true
+
+- name: Verify DuckDNS update response
+  ansible.builtin.assert:
+    that:
+      - duckdns_update.content | trim == 'OK'
+    fail_msg: DuckDNS rejected the update. Check the subdomain and token.
+  no_log: true

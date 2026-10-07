@@ -7,17 +7,20 @@ ANSIBLE := $(VENV)/bin/ansible
 ANSIBLE_PLAYBOOK := $(VENV)/bin/ansible-playbook
 ANSIBLE_GALAXY := $(VENV)/bin/ansible-galaxy
 ANSIBLE_INVENTORY := $(VENV)/bin/ansible-inventory
+ANSIBLE_VAULT := $(VENV)/bin/ansible-vault
+ANSIBLE_DOC := $(VENV)/bin/ansible-doc
 
 SSH_KEY := $(HOME)/.ssh/cloud1-aws.pem
 VAULTED_SSH_KEY := secrets/cloud1-aws.pem.vault
 
-.PHONY: help setup apply-env restore-key inventory ping syntax deploy check ssh clean-local
+.PHONY: help setup apply-env allow-ssh restore-key inventory ping syntax deploy check ssh clean-local
 
 help:
 	@echo "Available commands:"
 	@echo "  make setup        - Create Python venv and install Ansible requirements"
 	@echo "  make restore-key  - Decrypt SSH private key from Ansible Vault"
 	@echo "  make apply-env    - Generate local Ansible files from .env"
+	@echo "  make allow-ssh    - Add current public IP to EC2 Security Group for SSH"
 	@echo "  make inventory    - Show Ansible inventory graph"
 	@echo "  make ping         - Test Ansible SSH connection"
 	@echo "  make syntax       - Run Ansible syntax check"
@@ -29,14 +32,23 @@ help:
 setup:
 	python3 -m venv $(VENV)
 	$(PYTHON) -m pip install --upgrade pip ansible
-	$(ANSIBLE_GALAXY) collection install -r requirements.yml
+	$(ANSIBLE_GALAXY) collection install -r requirements.yml --force
+	$(ANSIBLE_DOC) community.docker.docker_compose_v2 >/dev/null
+	@echo "Ansible environment OK."
 
 apply-env:
 	./scripts/apply-env.sh
 
+allow-ssh:
+	./scripts/allow-ssh-current-ip.sh
+
 restore-key:
+	@if [ ! -f "$(VAULTED_SSH_KEY)" ]; then \
+		echo "Missing $(VAULTED_SSH_KEY). Copy it into secrets/ or update VAULTED_SSH_KEY in the Makefile."; \
+		exit 1; \
+	fi
 	mkdir -p $(HOME)/.ssh
-	ansible-vault decrypt $(VAULTED_SSH_KEY) --output $(SSH_KEY)
+	$(ANSIBLE_VAULT) decrypt $(VAULTED_SSH_KEY) --output $(SSH_KEY)
 	chmod 400 $(SSH_KEY)
 
 inventory:

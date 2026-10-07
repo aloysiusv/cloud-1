@@ -1,5 +1,6 @@
 ---
-# Rename this file to wp1.yml and adapt it.
+# Rename this file to wp1.yml and adapt it,
+# or generate it from .env with scripts/apply-env.sh.
 public_ip: 203.0.113.10
 duckdns_subdomain: my-cloud1-wp1
 domain_name: "{{ duckdns_subdomain }}.duckdns.org"
