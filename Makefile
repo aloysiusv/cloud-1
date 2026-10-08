@@ -17,15 +17,13 @@ VAULTED_SSH_KEY := secrets/cloud1-aws.pem.vault
 
 help:
 	@echo "Available commands:"
-	@echo "  make setup        - Create Python venv and install Ansible requirements"
+	@echo "  make setup        - Create Python venv and install Ansible requirements" 
 	@echo "  make restore-key  - Decrypt SSH private key from Ansible Vault"
 	@echo "  make apply-env    - Generate local Ansible files from .env"
-	@echo "  make allow-ssh    - Add current public IP to EC2 Security Group for SSH"
 	@echo "  make inventory    - Show Ansible inventory graph"
 	@echo "  make ping         - Test Ansible SSH connection"
 	@echo "  make syntax       - Run Ansible syntax check"
 	@echo "  make deploy       - Deploy the WordPress stack"
-	@echo "  make check        - Run apply-env, inventory, ping, and syntax"
 	@echo "  make ssh          - SSH into the EC2 instance"
 	@echo "  make clean-local  - Remove generated local files"
 
@@ -38,9 +36,6 @@ setup:
 
 apply-env:
 	./scripts/apply-env.sh
-
-allow-ssh:
-	./scripts/allow-ssh-current-ip.sh
 
 restore-key:
 	@if [ ! -f "$(VAULTED_SSH_KEY)" ]; then \
@@ -62,8 +57,6 @@ syntax:
 
 deploy:
 	$(ANSIBLE_PLAYBOOK) site.yml --ask-vault-pass
-
-check: apply-env inventory ping syntax
 
 ssh:
 	@if [ ! -f inventory/hosts.ini ]; then \

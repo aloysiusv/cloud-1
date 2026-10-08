@@ -93,11 +93,10 @@ cloud-1/
 │   └── vault.yml.example
 │
 ├── secrets/
-│   └── .gitkeep
+│   └── encrypted .vault
 │
 ├── scripts/
 │   ├── apply-env.sh
-│   └── allow-ssh-current-ip.sh
 │
 └── roles/
     ├── common/
@@ -194,18 +193,11 @@ cp .env.example .env
 nano .env
 ```
 
-If you use `make allow-ssh`, verify AWS CLI access:
-
-```bash
-aws sts get-caller-identity
-```
-
 Then:
 
 ```bash
 make restore-key      # only if secrets/cloud1-aws.pem.vault exists
 make apply-env
-make allow-ssh        # optional; opens SSH only for your current public IP
 make inventory
 make ping
 make syntax
@@ -236,7 +228,6 @@ make help          # show available commands
 make setup         # create venv and install Ansible dependencies
 make restore-key   # decrypt SSH key into ~/.ssh/cloud1-aws.pem
 make apply-env     # generate inventory and local vars from .env
-make allow-ssh     # add current IP/32 to EC2 Security Group for SSH
 make inventory     # show Ansible inventory
 make ping          # test Ansible SSH connection
 make syntax        # run Ansible syntax check
@@ -327,3 +318,8 @@ EBS volume
 Security groups
 Key pairs
 ```
+
+## REMINDER FOR MYSELF:
+- my domain: lrandria-cloud1-wp1.duckdns.org
+- my elastic IP: 16.192.70.128
+- change IP to current IP onto the console to connect by ssh
