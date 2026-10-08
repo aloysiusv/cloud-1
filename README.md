@@ -320,6 +320,7 @@ Key pairs
 ```
 
 ## REMINDER FOR MYSELF:
-- my domain: lrandria-cloud1-wp1.duckdns.org
+- my domain: lrandria-cloud1-wp1(.duckdns.org)
 - my elastic IP: 16.192.70.128
 - change IP to current IP onto the console to connect by ssh
+- change PHPMYADMIN IP, but if I do, I need to restart Nginx container.
